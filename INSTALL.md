@@ -16,9 +16,7 @@ Then add the plugin to your `opencode.json`:
 
 ```json
 {
-  "plugin": {
-    "opencode-anthropic-login-via-cli": true
-  }
+  "plugin": ["opencode-anthropic-login-via-cli"]
 }
 ```
 
