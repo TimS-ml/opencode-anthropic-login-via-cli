@@ -109,9 +109,8 @@ const REFRESH_THRESHOLD_MS = 30 * 60 * 1000;
 
 const plugin: Plugin = async () => {
   const cli = await hasClaude();
-  const creds = await readCredentials();
 
-  if (!cli || !creds?.claudeAiOauth?.accessToken) {
+  if (!cli) {
     return {};
   }
 
@@ -124,7 +123,14 @@ const plugin: Plugin = async () => {
     let access = creds?.claudeAiOauth?.accessToken;
     let exp = creds?.claudeAiOauth?.expiresAt;
 
-    if (!access) return;
+    if (!access) {
+      // No credentials found at all — try a CLI refresh to trigger login/token renewal
+      await refreshViaCli();
+      const fresh = await readCredentials();
+      access = fresh?.claudeAiOauth?.accessToken;
+      exp = fresh?.claudeAiOauth?.expiresAt;
+      if (!access) return;
+    }
 
     const remaining = exp ? Number(exp) - Date.now() : Infinity;
 
@@ -167,6 +173,12 @@ const plugin: Plugin = async () => {
     return syncPromise;
   }
 
+  // Eagerly sync on plugin load so auth.json is populated before
+  // OpenCode tries to read it (don't wait only for session.created)
+  try {
+    await doSync();
+  } catch {}
+
   return {
     config: async (config: any): Promise<void> => {
       const providers = config.provider ?? {};
@@ -196,27 +208,11 @@ const plugin: Plugin = async () => {
           return;
         }
 
-        if (syncPromise) {
-          await syncPromise;
-          if (cachedToken) output.headers["x-api-key"] = cachedToken;
-          return;
-        }
-
-        const creds = await readCredentials();
-        const access = creds?.claudeAiOauth?.accessToken;
-        const exp = creds?.claudeAiOauth?.expiresAt
-          ? Number(creds.claudeAiOauth.expiresAt)
-          : undefined;
-
-        if (access && exp && exp > now) {
-          cachedToken = access;
-          cachedExpiresAt = exp;
-          output.headers["x-api-key"] = access;
-          return;
-        }
-
+        // Token missing or expired — always try to re-sync
         await ensureSync();
-        if (cachedToken) output.headers["x-api-key"] = cachedToken;
+        if (cachedToken) {
+          output.headers["x-api-key"] = cachedToken;
+        }
       } catch {}
     },
   };
