@@ -1,6 +1,6 @@
 import type { Plugin } from "@opencode-ai/plugin";
-import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
 import { homedir, platform } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -38,6 +38,7 @@ async function readJson<T>(p: string): Promise<T | undefined> {
   }
 }
 
+/** macOS: read from Keychain via `security` CLI */
 async function readCredentialsFromKeychain(): Promise<ClaudeCredentials | undefined> {
   try {
     const { stdout } = await execFileAsync("security", [
@@ -52,10 +53,30 @@ async function readCredentialsFromKeychain(): Promise<ClaudeCredentials | undefi
   }
 }
 
+/** Linux: read from libsecret via `secret-tool` CLI */
+async function readCredentialsFromSecretTool(): Promise<ClaudeCredentials | undefined> {
+  try {
+    const { stdout } = await execFileAsync("secret-tool", [
+      "lookup",
+      "service",
+      "Claude Code-credentials",
+    ], { timeout: 5_000 });
+    if (!stdout.trim()) return undefined;
+    return JSON.parse(stdout.trim()) as ClaudeCredentials;
+  } catch {
+    return undefined;
+  }
+}
+
 async function readCredentials(): Promise<ClaudeCredentials | undefined> {
   if (platform() === "darwin") {
+    // macOS: prefer Keychain, fall back to credentials file
     const keychainCreds = await readCredentialsFromKeychain();
     if (keychainCreds) return keychainCreds;
+  } else if (platform() === "linux") {
+    // Linux: prefer libsecret (secret-tool), fall back to credentials file
+    const secretToolCreds = await readCredentialsFromSecretTool();
+    if (secretToolCreds) return secretToolCreds;
   }
   return readJson<ClaudeCredentials>(credentialsPath());
 }
@@ -77,6 +98,11 @@ async function refreshViaCli(): Promise<void> {
       { timeout: 60_000, env: { ...process.env, TERM: "dumb" } },
     );
   } catch {}
+}
+
+/** Ensure parent directory of a path exists */
+async function ensureDir(filePath: string): Promise<void> {
+  await mkdir(dirname(filePath), { recursive: true });
 }
 
 const REFRESH_THRESHOLD_MS = 30 * 60 * 1000;
@@ -115,7 +141,9 @@ const plugin: Plugin = async () => {
     cachedExpiresAt = exp ? Number(exp) : undefined;
 
     try {
-      const auth = (await readJson<OpenCodeAuth>(authJsonPath())) ?? {};
+      const authPath = authJsonPath();
+      await ensureDir(authPath);
+      const auth = (await readJson<OpenCodeAuth>(authPath)) ?? {};
       const refreshToken = creds?.claudeAiOauth?.refreshToken;
       if (auth.anthropic?.access !== cachedToken) {
         auth.anthropic = {
@@ -125,7 +153,7 @@ const plugin: Plugin = async () => {
           ...(refreshToken ? { refresh: refreshToken } : {}),
           ...(cachedExpiresAt ? { expires: cachedExpiresAt } : {}),
         };
-        await writeFile(authJsonPath(), JSON.stringify(auth, null, 2), "utf-8");
+        await writeFile(authPath, JSON.stringify(auth, null, 2), "utf-8");
       }
     } catch {}
   }
