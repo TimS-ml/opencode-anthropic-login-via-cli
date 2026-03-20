@@ -27,15 +27,18 @@ Claude CLI (OAuth token)  -->  Plugin  -->  OpenCode
 
 ## Install
 
-Add to your `opencode.json`:
+This package is not published to npm.
 
-```json
-{
-  "plugin": ["opencode-anthropic-login-via-cli"]
-}
+Build it locally, then link the built plugin into OpenCode's global plugin directory:
+
+```bash
+bun install
+bun run build
+mkdir -p ~/.config/opencode/plugins
+ln -sf "$(pwd)/dist/index.js" ~/.config/opencode/plugins/opencode-anthropic-login-via-cli.js
 ```
 
-OpenCode installs npm plugins automatically on startup. No `bun add` or `npm install` needed.
+OpenCode loads files from `~/.config/opencode/plugins/` automatically on startup. Do not add this package name to `opencode.json`.
 
 That's it. No API key, no provider config needed.
 

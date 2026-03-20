@@ -4,33 +4,31 @@
 
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and logged in (`claude auth login`)
 - [OpenCode](https://github.com/opencode-ai/opencode) installed
+- [Bun](https://bun.sh/) installed
+- A local checkout of this repository
 
-## Install from npm
+## Install from local source
 
-```bash
-cd ~/.config/opencode
-npm install opencode-anthropic-login-via-cli
-```
+This is the only supported install method for this repo.
 
-Then add the plugin to your `opencode.json`:
-
-```json
-{
-  "plugin": ["opencode-anthropic-login-via-cli"]
-}
-```
-
-## Install from local source (development)
+Do not use `npm install opencode-anthropic-login-via-cli` and do not add this package name to `opencode.json` - this package is not published to npm.
 
 ```bash
-# In the plugin directory
-npm install
-npm run build
-npm link
+# In this repository
+bun install
+bun run build
 
-# In the opencode config directory
-cd ~/.config/opencode
-npm link opencode-anthropic-login-via-cli
+# Link the built plugin into OpenCode's global plugin directory
+mkdir -p ~/.config/opencode/plugins
+ln -sf "$(pwd)/dist/index.js" ~/.config/opencode/plugins/opencode-anthropic-login-via-cli.js
+```
+
+OpenCode loads files in `~/.config/opencode/plugins/` automatically on startup, so no `opencode.json` entry is needed.
+
+If you update this repo later, rebuild it:
+
+```bash
+bun run build
 ```
 
 ## Linux Setup
